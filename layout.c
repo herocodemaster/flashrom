@@ -30,8 +30,8 @@ static int romimages = 0;
 #define MAX_ROMLAYOUT	32
 
 typedef struct {
-	unsigned int start;
-	unsigned int end;
+	chipoff_t start;
+	chipoff_t end;
 	unsigned int included;
 	char name[256];
 } romlayout_t;
@@ -217,7 +217,32 @@ romlayout_t *get_next_included_romentry(unsigned int start)
 	return best_entry;
 }
 
-int handle_romentries(const struct flashctx *flash, uint8_t *oldcontents, uint8_t *newcontents)
+/* Validate and - if needed - normalize layout entries. */
+int normalize_romentries(const struct flashctx *flash)
+{
+	chipsize_t total_size = flash->chip->total_size * 1024;
+	int ret = 0;
+
+	int i;
+	for (i = 0; i < romimages; i++) {
+		if (rom_entries[i].start >= total_size || rom_entries[i].end >= total_size) {
+			msg_gwarn("Warning: Address range of region \"%s\" exceeds the current chip's "
+				  "address space.\n", rom_entries[i].name);
+			if (rom_entries[i].included)
+				ret = 1;
+		}
+		if (rom_entries[i].start > rom_entries[i].end) {
+			msg_gwarn("Warning: Size of the address range of region \"%s\" is not positive.\n",
+				  rom_entries[i].name);
+			if (rom_entries[i].included)
+				ret = 1;
+		}
+	}
+
+	return ret;
+}
+
+int build_new_image(const struct flashctx *flash, uint8_t *oldcontents, uint8_t *newcontents)
 {
 	unsigned int start = 0;
 	romlayout_t *entry;
